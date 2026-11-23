@@ -1,0 +1,15 @@
+[package]
+name = "hailo-runtime"
+description = "Rust bindings for HailoRT (libhailort 4.x and 5.x): run compiled Hailo models (.hef) on Hailo-8, Hailo-8L, Hailo-10H"
+version.workspace = true
+edition.workspace = true
+links = "hailort"
+
+[lib]
+name = "hailo_runtime"
+
+[dependencies]
+cxx = "1.0"
+
+[build-dependencies]
+cxx-build = "1.0"

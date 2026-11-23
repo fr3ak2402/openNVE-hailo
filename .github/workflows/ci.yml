@@ -1,0 +1,65 @@
+# Builds and tests openNVE-hailo against libhailort 4.x (Hailo-8 / 8L) and 5.x (Hailo-10H / 15),
+# compiled from the HailoRT source (no Hailo device: the tests check loading, versions, errors).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: HailoRT ${{ matrix.hailort }} (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, ubuntu-24.04-arm]
+        hailort: ["4.23.0", "5.5.0"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: libhailort (cached)
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: ~/hailort
+          key: libhailort-${{ matrix.hailort }}-${{ matrix.os }}-v1
+
+      - name: Build libhailort ${{ matrix.hailort }}
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+          sudo apt-get update && sudo apt-get install -y ninja-build
+          git clone --depth 1 --branch v${{ matrix.hailort }} https://github.com/hailo-ai/hailort.git ~/hailort-src
+          cmake -S ~/hailort-src -B ~/hailort-build -G Ninja -DCMAKE_BUILD_TYPE=Release
+          cmake --build ~/hailort-build --target libhailort
+          mkdir -p ~/hailort/lib
+          cp -a ~/hailort-build/hailort/libhailort/src/libhailort.so* ~/hailort/lib/
+          cp -a ~/hailort-src/hailort/libhailort/include ~/hailort/include
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+
+      - name: Rust
+        run: |
+          export HAILORT_INCLUDE_DIR=$HOME/hailort/include HAILORT_LIB_DIR=$HOME/hailort/lib
+          cargo fmt --all --check
+          cargo clippy --workspace --all-targets -- -D warnings
+          cargo test -p hailo-runtime
+          cargo run -p hailo-runtime --example info
+
+      - name: Python
+        run: |
+          export HAILORT_INCLUDE_DIR=$HOME/hailort/include HAILORT_LIB_DIR=$HOME/hailort/lib
+          python -m pip install "maturin>=1.8,<2" pytest
+          cd python
+          maturin build --release --out dist
+          python -m pip install dist/opennve_hailo-*.whl
+          cd ..
+          python -m pytest -q python/tests

@@ -1,0 +1,32 @@
+[build-system]
+requires = ["maturin>=1.8,<2"]
+build-backend = "maturin"
+
+[project]
+name = "opennve-hailo"
+description = "Hailo accelerators for openNVE: run compiled Hailo models (.hef) on Hailo-8, Hailo-8L, Hailo-10H with HailoRT, in Rust"
+readme = "../README.md"
+requires-python = ">=3.11"
+dependencies = ["numpy>=1.26"]
+dynamic = ["version"]
+classifiers = [
+    "Programming Language :: Rust",
+    "Programming Language :: Python :: 3",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
+]
+
+[project.urls]
+Repository = "https://github.com/fr3ak2402/openNVE-hailo"
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[tool.maturin]
+module-name = "opennve_hailo._opennve_hailo"
+python-source = "."
+python-packages = ["opennve_hailo"]
+features = ["pyo3/extension-module"]
+# libhailort is not copied into the wheel: the package uses the HailoRT installed with the driver
+auditwheel = "skip"
+compatibility = "linux"

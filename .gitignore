@@ -1,0 +1,8 @@
+/target
+__pycache__/
+*.so
+*.pyd
+*.egg-info/
+/dist
+/python/dist
+hailort.log
