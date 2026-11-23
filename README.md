@@ -21,7 +21,7 @@ Windows (x86_64, with the HailoRT Windows installer; not tested). Hailo has no d
 |---|---|
 | `runtime/` | Rust crate `hailo-runtime`: C++ bridge ([cxx](https://cxx.rs)) to the asynchronous InferModel API of libhailort 4.x / 5.x, safe Rust API (`scan`, `Model::load`, `Model::run`) |
 | `python/` | Python package `opennve_hailo` (PyO3, one wheel for Python 3.11 and newer): `scan()`, `Model(path).run(batch)` with numpy arrays |
-| `install.sh` | Builds and installs the Python package on the computer with the Hailo (Raspberry Pi 5) |
+| `install.sh` | Sets up the Raspberry Pi (PCIe, driver, HailoRT, Rust) and builds and installs the Python package |
 
 The asynchronous InferModel API is the one HailoRT supports on all chips (the older C API with
 vstreams works only on the Hailo-8 / 8L). It is a C++ API that changes between HailoRT versions,
@@ -29,23 +29,34 @@ so the package is compiled against the HailoRT installed on the computer (`insta
 
 ## Installation (Raspberry Pi 5)
 
+One command sets up everything on the Raspberry Pi, with the openNVE environment active:
+
 ```sh
-sudo apt install dkms hailo-all          # AI Kit / AI HAT+ (AI HAT+ 2: hailo-h10-all); reboot afterwards
-sudo apt install git g++                 # compiler for the C++ bridge
-curl https://sh.rustup.rs -sSf | sh      # Rust, if it is not installed yet
 source ~/opennve/.venv/bin/activate      # the Python environment of openNVE
-git clone https://github.com/fr3ak2402/openNVE-hailo
-bash openNVE-hailo/install.sh
+opennve hailo install                    # openNVE 1.2.0 or newer; or: bash openNVE-hailo/install.sh
+sudo reboot                              # if it says so
 ```
 
-`install.sh` finds the installed HailoRT version, downloads the HailoRT headers of exactly that
-version (Raspberry Pi OS installs only the library), builds the wheel with
-[maturin](https://www.maturin.rs) and installs it into the active Python. Run it again after a
-HailoRT update. Check:
+`install.sh` does only what is missing, and asks before changing the system (`--yes`: does not
+ask):
+
+1. finds the Hailo module on PCIe: Hailo-8 / 8L (AI Kit, AI HAT+) or Hailo-10H (AI HAT+ 2)
+2. Raspberry Pi 5: enables the PCIe connector and PCIe Gen 3 in `/boot/firmware/config.txt`
+   (backup: `config.txt.opennve-hailo.bak`; `--no-gen3` keeps Gen 2)
+3. installs driver, firmware and HailoRT: `sudo apt install dkms hailo-all`, for the Hailo-10H
+   `hailo-h10-all` (`--package=...` chooses)
+4. installs git, g++, curl and Rust (rustup, for the user)
+5. downloads the HailoRT headers of the installed version, builds opennve_hailo with
+   [maturin](https://www.maturin.rs) and installs it into the active Python
+
+After steps 2 and 3 the Pi has to be restarted (`--reboot` does it). Run it again after a HailoRT
+update: opennve_hailo is compiled for one HailoRT version. Other Linux computers: install HailoRT
+from the Hailo Developer Zone first; `install.sh` then builds and installs opennve_hailo
+(`--no-system` skips steps 2 to 4). Check:
 
 ```sh
+opennve system      # HailoRT 4.23.0  1 Hailo device (Hailo-8L) (.hef models)
 python -c "import opennve_hailo as h; print(h.hailort_version(), h.scan())"
-# 4.23.0 [Device(id='0001:01:00.0', chip='Hailo-8L')]
 ```
 
 ## Python

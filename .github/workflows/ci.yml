@@ -63,3 +63,9 @@ jobs:
           python -m pip install dist/opennve_hailo-*.whl
           cd ..
           python -m pytest -q python/tests
+
+      - name: install.sh (fake Raspberry Pi)
+        run: |
+          export HAILORT_INCLUDE_DIR=$HOME/hailort/include HAILORT_LIB_DIR=$HOME/hailort/lib
+          export HAILORT_VERSION=${{ matrix.hailort }}
+          bash tests/test_install.sh
