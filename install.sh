@@ -202,7 +202,8 @@ step "opennve_hailo: build for HailoRT $HAILORT_VERSION ($CHIPS) and install int
 "$PYTHON" -m pip install --quiet --upgrade "maturin>=1.8,<2"
 rm -rf "$HERE/python/dist"
 (cd "$HERE/python" && "$PYTHON" -m maturin build --release --interpreter "$PYTHON" --out dist)
-"$PYTHON" -m pip install --force-reinstall "$HERE"/python/dist/opennve_hailo-*.whl
+"$PYTHON" -m pip install --quiet "numpy>=1.26"
+"$PYTHON" -m pip install --force-reinstall --no-deps "$HERE"/python/dist/opennve_hailo-*.whl
 
 "$PYTHON" - <<'EOF'
 import opennve_hailo
