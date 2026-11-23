@@ -30,12 +30,13 @@ def test_missing_file(tmp_path):
 
 
 @pytest.mark.skipif(bool(opennve_hailo.scan(identify=False)), reason="a Hailo device is connected")
-def test_without_device(tmp_path):
+def test_without_device(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # HailoRT would write hailort.log here
     path = tmp_path / "model.hef"
     path.write_bytes(b"not a model")
     with pytest.raises(RuntimeError, match="no free Hailo device"):
         opennve_hailo.Model(path)
-    assert not (tmp_path / "hailort.log").exists() and not os.path.exists("hailort.log")
+    assert not (tmp_path / "hailort.log").exists()
 
 
 @pytest.mark.skipif(not os.environ.get("OPENNVE_HAILO_TEST_HEF"), reason="OPENNVE_HAILO_TEST_HEF not set")
