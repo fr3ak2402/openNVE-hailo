@@ -26,7 +26,7 @@ if [[ ! -f "$LIB/lib/libhailort.so.$VERSION" ]]; then
     mkdir -p /tmp/hailort/hailort/external/protobuf-install
     ln -s lib64 /tmp/hailort/hailort/external/protobuf-install/lib
     cmake -S /tmp/hailort -B /tmp/hailort-build -DCMAKE_BUILD_TYPE=Release \
-        -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX"
+        -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX" -DCMAKE_POLICY_VERSION_MINIMUM=3.5
     cmake --build /tmp/hailort-build --target libhailort -j "$(nproc)"
     rm -rf "$LIB" && mkdir -p "$LIB/lib"
     cp -a /tmp/hailort-build/hailort/libhailort/src/libhailort.so* "$LIB/lib/"
