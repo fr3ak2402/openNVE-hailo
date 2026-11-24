@@ -14,9 +14,11 @@ PYTHON=/opt/python/cp311-cp311/bin/python
 
 if [[ ! -f "$LIB/lib/libhailort.so.$VERSION" ]]; then
     echo "building libhailort $VERSION (only to link against)"
+    export CC="$(command -v gcc)" CXX="$(command -v g++)"  # also for the external projects (protobuf)
     rm -rf /tmp/hailort /tmp/hailort-build
     git clone --quiet --depth 1 --branch "v$VERSION" https://github.com/hailo-ai/hailort.git /tmp/hailort
-    cmake -S /tmp/hailort -B /tmp/hailort-build -DCMAKE_BUILD_TYPE=Release
+    cmake -S /tmp/hailort -B /tmp/hailort-build -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX"
     cmake --build /tmp/hailort-build --target libhailort -j "$(nproc)"
     rm -rf "$LIB" && mkdir -p "$LIB/lib"
     cp -a /tmp/hailort-build/hailort/libhailort/src/libhailort.so* "$LIB/lib/"
