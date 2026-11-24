@@ -14,12 +14,10 @@ PYTHON=/opt/python/cp311-cp311/bin/python
 
 if [[ ! -f "$LIB/lib/libhailort.so.$VERSION" ]]; then
     echo "building libhailort $VERSION (only to link against)"
-    "$PYTHON" -m pip install --quiet ninja
-    export PATH="$(dirname "$PYTHON"):$PATH"
     rm -rf /tmp/hailort /tmp/hailort-build
     git clone --quiet --depth 1 --branch "v$VERSION" https://github.com/hailo-ai/hailort.git /tmp/hailort
-    cmake -S /tmp/hailort -B /tmp/hailort-build -G Ninja -DCMAKE_BUILD_TYPE=Release
-    cmake --build /tmp/hailort-build --target libhailort
+    cmake -S /tmp/hailort -B /tmp/hailort-build -DCMAKE_BUILD_TYPE=Release
+    cmake --build /tmp/hailort-build --target libhailort -j "$(nproc)"
     rm -rf "$LIB" && mkdir -p "$LIB/lib"
     cp -a /tmp/hailort-build/hailort/libhailort/src/libhailort.so* "$LIB/lib/"
     cp -a /tmp/hailort/hailort/libhailort/include "$LIB/include"
