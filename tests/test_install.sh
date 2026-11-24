@@ -38,9 +38,9 @@ S
     touch "$root/commands" "$root/installed"
 }
 
-run() {  # run <root> <options...>
+run() {  # run <root> <options...>; no ready-made packages unless RELEASES is set
     local root="$1"; shift
-    OPENNVE_HAILO_ROOT="$root" PATH="$root/bin:$PATH" bash "$HERE/install.sh" --yes "$@" >"$root/log" 2>&1 \
+    OPENNVE_HAILO_RELEASES="${RELEASES:-file://$root/no-releases.json}" OPENNVE_HAILO_ROOT="$root" PATH="$root/bin:$PATH" bash "$HERE/install.sh" --yes "$@" >"$root/log" 2>&1 \
         || { cat "$root/log"; echo "install.sh failed"; exit 1; }
 }
 
@@ -76,5 +76,25 @@ check 'grep -q "Reboot to load" "$R/log"' "$R"
 R="$WORK/nosys"; fake_pi "$R" 0x2864 "dtparam=audio=on"
 run "$R" --no-system
 check '[[ ! -s "$R/commands" ]] && ! grep -q pciex1 "$R/boot/firmware/config.txt"' "$R"
+
+# ready-made package: install.sh downloads the asset for this HailoRT version and machine, no build
+R="$WORK/ready"; fake_pi "$R" 0x2864 $'[all]\ndtparam=pciex1_gen=3'
+echo hailo-all >"$R/installed"
+BUILT="$(ls "$HERE"/python/dist/opennve_hailo-*.whl | head -1)"  # built by the tests above
+VERSION="${BUILT##*/opennve_hailo-}"; VERSION="${VERSION%%-*}"
+ASSET="hailort-${HAILORT_VERSION}_opennve_hailo-${VERSION}-cp311-abi3-manylinux_2_28_$(uname -m).whl"
+mkdir -p "$R/assets"; cp "$BUILT" "$R/assets/$ASSET"
+cat >"$R/releases.json" <<JSON
+[{"tag_name": "v9.9.9", "draft": false, "assets": [
+  {"name": "hailort-0.0.1_opennve_hailo-${VERSION}-cp311-abi3-manylinux_2_28_$(uname -m).whl", "browser_download_url": "file:///nonexistent"},
+  {"name": "$ASSET", "browser_download_url": "file://$R/assets/$ASSET"}]}]
+JSON
+RELEASES="file://$R/releases.json" run "$R"
+check 'grep -q "v9.9.9: $ASSET" "$R/log"' "$R"
+check '! grep -q "maturin\|Compiling\|build for HailoRT" "$R/log"' "$R"
+check 'grep -q "with HailoRT" "$R/log"' "$R"
+# --build ignores the ready-made package
+RELEASES="file://$R/releases.json" run "$R" --build
+check 'grep -q "build for HailoRT" "$R/log" && ! grep -q "v9.9.9" "$R/log"' "$R"
 
 echo "all install.sh tests passed"

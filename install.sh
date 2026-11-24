@@ -8,8 +8,10 @@
 #   1. finds the Hailo module (PCIe): Hailo-8 / 8L (AI Kit, AI HAT+) or Hailo-10H (AI HAT+ 2)
 #   2. enables the PCIe connector and PCIe Gen 3 in /boot/firmware/config.txt (Raspberry Pi 5)
 #   3. installs driver, firmware and HailoRT: sudo apt install dkms hailo-all (Hailo-10H: hailo-h10-all)
-#   4. installs the build tools (git, g++, curl) and Rust (rustup, for this user)
-#   5. builds opennve_hailo against the installed HailoRT and installs it into the active Python
+#   4. installs the ready-made opennve_hailo package for the installed HailoRT version (releases
+#      of openNVE-hailo) into the active Python
+#   5. only if there is none (or with --build): installs git, g++, curl and Rust (rustup, for this
+#      user) and builds opennve_hailo against the installed HailoRT
 # Steps 2 and 3 need a reboot; the script says so at the end (--reboot: reboots itself).
 # On other Linux computers steps 2 and 3 are skipped: install HailoRT from the Hailo Developer
 # Zone first. Run it again after a HailoRT update.
@@ -20,6 +22,7 @@
 #     --no-gen3      do not enable PCIe Gen 3
 #     --package P    HailoRT package for apt: hailo-all or hailo-h10-all (default: by the module found)
 #     --reboot       reboot at the end if needed
+#     --build        build opennve_hailo here instead of installing the ready-made package
 #
 # Environment variables (optional): PYTHON, HAILORT_VERSION, HAILORT_INCLUDE_DIR, HAILORT_LIB_DIR,
 # CACHE (default ~/.cache/opennve-hailo), see the README.
@@ -33,6 +36,7 @@ SYSTEM=1
 GEN3=1
 PACKAGE=""
 REBOOT=0
+BUILD=0
 for argument in "$@"; do
     case "$argument" in
         --yes | -y) ASSUME_YES=1 ;;
@@ -40,6 +44,7 @@ for argument in "$@"; do
         --no-gen3) GEN3=0 ;;
         --package=*) PACKAGE="${argument#--package=}" ;;
         --reboot) REBOOT=1 ;;
+        --build) BUILD=1 ;;
         --help | -h) sed -n '2,/^set -euo/p' "$0" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
         *) echo "unknown option $argument (--help)" >&2; exit 2 ;;
     esac
@@ -137,34 +142,7 @@ elif [[ $SYSTEM == 1 ]]; then
     step "Not a Raspberry Pi: PCIe and HailoRT are not set up by this script (Hailo Developer Zone packages)"
 fi
 
-# ---------------------------------------------------------------- 4. build tools, Rust
-if [[ $SYSTEM == 1 ]]; then
-    MISSING=()
-    command -v git >/dev/null || MISSING+=(git)
-    command -v g++ >/dev/null || command -v c++ >/dev/null || MISSING+=(g++)
-    command -v curl >/dev/null || MISSING+=(curl)
-    if [[ ${#MISSING[@]} -gt 0 ]] && command -v apt-get >/dev/null; then
-        step "Build tools: sudo apt install ${MISSING[*]}"
-        ask "Install ${MISSING[*]}?" && $SUDO apt-get install -y "${MISSING[@]}"
-    fi
-fi
-if ! command -v cargo >/dev/null && [[ -x "$HOME/.cargo/bin/cargo" ]]; then
-    export PATH="$HOME/.cargo/bin:$PATH"
-fi
-if ! command -v cargo >/dev/null; then
-    [[ $SYSTEM == 1 ]] || fail "Rust (cargo) is missing: curl https://sh.rustup.rs -sSf | sh"
-    step "Rust: rustup (for $(id -un), in ~/.cargo)"
-    if ask "Install Rust with rustup?"; then
-        curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
-        export PATH="$HOME/.cargo/bin:$PATH"
-    else
-        fail "Rust is needed to build opennve_hailo"
-    fi
-fi
-command -v g++ >/dev/null || command -v c++ >/dev/null || fail "C++ compiler missing: sudo apt install g++"
-command -v git >/dev/null || fail "git missing: sudo apt install git"
-
-# ---------------------------------------------------------------- 5. opennve_hailo
+# ---------------------------------------------------------------- HailoRT version
 if [[ -z "${HAILORT_VERSION:-}" ]] && command -v hailortcli >/dev/null; then
     HAILORT_VERSION="$(hailortcli --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)"
 fi
@@ -182,28 +160,100 @@ case "${HAILORT_VERSION%%.*}" in
 esac
 export HAILORT_VERSION
 
-# headers of exactly this version (the C++ API changes between versions)
-if [[ -z "${HAILORT_INCLUDE_DIR:-}" ]]; then
-    SOURCE="$CACHE/hailort-$HAILORT_VERSION"
-    if [[ ! -f "$SOURCE/hailort/libhailort/include/hailo/hailort.hpp" ]]; then
-        rm -rf "$SOURCE"
-        mkdir -p "$CACHE"
-        echo "downloading the HailoRT $HAILORT_VERSION headers"
-        git clone --quiet --depth 1 --branch "v$HAILORT_VERSION" --filter=blob:none --sparse \
-            https://github.com/hailo-ai/hailort.git "$SOURCE"
-        git -C "$SOURCE" sparse-checkout set hailort/libhailort/include
-    fi
-    HAILORT_INCLUDE_DIR="$SOURCE/hailort/libhailort/include"
-fi
-export HAILORT_INCLUDE_DIR
-
-step "opennve_hailo: build for HailoRT $HAILORT_VERSION ($CHIPS) and install into $PYTHON"
+# ---------------------------------------------------------------- 4. opennve_hailo: ready-made package
+# The releases of openNVE-hailo have ready-made packages for the HailoRT versions of Raspberry Pi OS
+# and the Hailo Developer Zone (Linux aarch64 / x86_64, every Python from 3.11): no Rust needed.
 "$PYTHON" -m pip --version >/dev/null 2>&1 || "$PYTHON" -m ensurepip --upgrade >/dev/null
-"$PYTHON" -m pip install --quiet --upgrade "maturin>=1.8,<2"
-rm -rf "$HERE/python/dist"
-(cd "$HERE/python" && "$PYTHON" -m maturin build --release --interpreter "$PYTHON" --out dist)
-"$PYTHON" -m pip install --quiet "numpy>=1.26"
-"$PYTHON" -m pip install --force-reinstall --no-deps "$HERE"/python/dist/opennve_hailo-*.whl
+install_wheel() {
+    "$PYTHON" -m pip install --quiet "numpy>=1.26"
+    "$PYTHON" -m pip install --force-reinstall --no-deps "$1"
+}
+WHEEL=""
+if [[ $BUILD == 0 ]]; then
+    step "opennve_hailo: ready-made package for HailoRT $HAILORT_VERSION ($CHIPS, $(uname -m))"
+    mkdir -p "$CACHE/wheels"
+    WHEEL="$("$PYTHON" - "$HAILORT_VERSION" "$(uname -m)" "$CACHE/wheels" "${OPENNVE_HAILO_RELEASES:-https://api.github.com/repos/fr3ak2402/openNVE-hailo/releases}" <<'EOF' || true
+import json, pathlib, sys, urllib.request
+
+version, machine, folder, url = sys.argv[1:5]
+prefix = f"hailort-{version}_"
+suffix = f"-cp311-abi3-manylinux_2_28_{machine}.whl"
+try:
+    with urllib.request.urlopen(urllib.request.Request(url, headers={"Accept": "application/vnd.github+json"}), timeout=30) as response:
+        releases = json.load(response)
+except Exception as error:
+    print(f"no connection to the releases ({error})", file=sys.stderr)
+    sys.exit(1)
+for release in releases:  # newest first
+    if release.get("draft"):
+        continue
+    for asset in release.get("assets", []):
+        name = asset["name"]
+        if name.startswith(prefix) and name.endswith(suffix):
+            target = pathlib.Path(folder) / name[len(prefix):]
+            target.unlink(missing_ok=True)
+            urllib.request.urlretrieve(asset["browser_download_url"], target)
+            print(f"{release['tag_name']}: {name}", file=sys.stderr)
+            print(target)
+            sys.exit(0)
+print(f"no ready-made package for HailoRT {version} on {machine}", file=sys.stderr)
+sys.exit(1)
+EOF
+)"
+fi
+if [[ -n "$WHEEL" ]]; then
+    install_wheel "$WHEEL"
+else
+    [[ $BUILD == 1 ]] || echo "building it instead (needs Rust and a C++ compiler)"
+
+    # ------------------------------------------------------------ 5. build tools, Rust
+    if [[ $SYSTEM == 1 ]]; then
+        MISSING=()
+        command -v git >/dev/null || MISSING+=(git)
+        command -v g++ >/dev/null || command -v c++ >/dev/null || MISSING+=(g++)
+        command -v curl >/dev/null || MISSING+=(curl)
+        if [[ ${#MISSING[@]} -gt 0 ]] && command -v apt-get >/dev/null; then
+            step "Build tools: sudo apt install ${MISSING[*]}"
+            ask "Install ${MISSING[*]}?" && $SUDO apt-get install -y "${MISSING[@]}"
+        fi
+    fi
+    if ! command -v cargo >/dev/null && [[ -x "$HOME/.cargo/bin/cargo" ]]; then
+        export PATH="$HOME/.cargo/bin:$PATH"
+    fi
+    if ! command -v cargo >/dev/null; then
+        [[ $SYSTEM == 1 ]] || fail "Rust (cargo) is missing: curl https://sh.rustup.rs -sSf | sh"
+        step "Rust: rustup (for $(id -un), in ~/.cargo)"
+        if ask "Install Rust with rustup?"; then
+            curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --profile minimal
+            export PATH="$HOME/.cargo/bin:$PATH"
+        else
+            fail "Rust is needed to build opennve_hailo"
+        fi
+    fi
+    command -v g++ >/dev/null || command -v c++ >/dev/null || fail "C++ compiler missing: sudo apt install g++"
+    command -v git >/dev/null || fail "git missing: sudo apt install git"
+
+    # headers of exactly this version (the C++ API changes between versions)
+    if [[ -z "${HAILORT_INCLUDE_DIR:-}" ]]; then
+        SOURCE="$CACHE/hailort-$HAILORT_VERSION"
+        if [[ ! -f "$SOURCE/hailort/libhailort/include/hailo/hailort.hpp" ]]; then
+            rm -rf "$SOURCE"
+            mkdir -p "$CACHE"
+            echo "downloading the HailoRT $HAILORT_VERSION headers"
+            git clone --quiet --depth 1 --branch "v$HAILORT_VERSION" --filter=blob:none --sparse \
+                https://github.com/hailo-ai/hailort.git "$SOURCE"
+            git -C "$SOURCE" sparse-checkout set hailort/libhailort/include
+        fi
+        HAILORT_INCLUDE_DIR="$SOURCE/hailort/libhailort/include"
+    fi
+    export HAILORT_INCLUDE_DIR
+
+    step "opennve_hailo: build for HailoRT $HAILORT_VERSION ($CHIPS) and install into $PYTHON"
+    "$PYTHON" -m pip install --quiet --upgrade "maturin>=1.8,<2"
+    rm -rf "$HERE/python/dist"
+    (cd "$HERE/python" && "$PYTHON" -m maturin build --release --interpreter "$PYTHON" --out dist)
+    install_wheel "$(ls "$HERE"/python/dist/opennve_hailo-*.whl | head -1)"
+fi
 
 "$PYTHON" - <<'EOF'
 import opennve_hailo

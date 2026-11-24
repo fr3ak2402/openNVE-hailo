@@ -21,11 +21,12 @@ Windows (x86_64, with the HailoRT Windows installer; not tested). Hailo has no d
 |---|---|
 | `runtime/` | Rust crate `hailo-runtime`: C++ bridge ([cxx](https://cxx.rs)) to the asynchronous InferModel API of libhailort 4.x / 5.x, safe Rust API (`scan`, `Model::load`, `Model::run`) |
 | `python/` | Python package `opennve_hailo` (PyO3, one wheel for Python 3.11 and newer): `scan()`, `Model(path).run(batch)` with numpy arrays |
-| `install.sh` | Sets up the Raspberry Pi (PCIe, driver, HailoRT, Rust) and builds and installs the Python package |
+| `install.sh` | Sets up the Raspberry Pi (PCIe, driver, HailoRT) and installs the Python package (ready-made, or built here) |
+| `ci/build_wheel.sh` | Builds the ready-made package for one HailoRT version (manylinux_2_28 container, CI) |
 
 The asynchronous InferModel API is the one HailoRT supports on all chips (the older C API with
 vstreams works only on the Hailo-8 / 8L). It is a C++ API that changes between HailoRT versions,
-so the package is compiled against the HailoRT installed on the computer (`install.sh`).
+so there is one package per HailoRT version; `install.sh` picks the one of the installed HailoRT.
 
 ## Installation (Raspberry Pi 5)
 
@@ -45,12 +46,22 @@ ask):
    (backup: `config.txt.opennve-hailo.bak`; `--no-gen3` keeps Gen 2)
 3. installs driver, firmware and HailoRT: `sudo apt install dkms hailo-all`, for the Hailo-10H
    `hailo-h10-all` (`--package=...` chooses)
-4. installs git, g++, curl and Rust (rustup, for the user)
-5. downloads the HailoRT headers of the installed version, builds opennve_hailo with
-   [maturin](https://www.maturin.rs) and installs it into the active Python
+4. installs the ready-made opennve_hailo package for the installed HailoRT version from the
+   [releases](https://github.com/fr3ak2402/openNVE-hailo/releases) into the active Python – no
+   Rust or compiler needed
+5. only if there is no ready-made package for that version (or with `--build`): installs git,
+   g++, curl and Rust (rustup, for the user), downloads the HailoRT headers of the installed
+   version and builds opennve_hailo with [maturin](https://www.maturin.rs)
 
 After steps 2 and 3 the Pi has to be restarted (`--reboot` does it). Run it again after a HailoRT
-update: opennve_hailo is compiled for one HailoRT version. Other Linux computers: install HailoRT
+update: opennve_hailo is compiled for one HailoRT version.
+
+Ready-made packages exist for HailoRT 4.23.0, 4.24.0 (Hailo-8 / 8L) and 5.1.1 to 5.5.0
+(Hailo-10H / 15), Linux aarch64 and x86_64 (manylinux_2_28: Raspberry Pi OS Bookworm / Trixie,
+Ubuntu 20.04 and newer), one file for every Python from 3.11. They use the libhailort installed
+with the driver. Without the script: download the file for your HailoRT version
+(`hailortcli --version`) and machine from the release, remove the `hailort-<version>_` prefix
+from the name and `pip install` it. Other Linux computers: install HailoRT
 from the Hailo Developer Zone first; `install.sh` then builds and installs opennve_hailo
 (`--no-system` skips steps 2 to 4). Check:
 

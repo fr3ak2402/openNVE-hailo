@@ -1,0 +1,82 @@
+# Ready-made opennve_hailo packages (Linux aarch64 / x86_64, manylinux_2_28, every Python from
+# 3.11), one per HailoRT version: install.sh installs them, so the Raspberry Pi needs no Rust.
+# A tag v* publishes them in a GitHub release (asset names: hailort-<version>_<wheel>).
+name: Packages
+
+on:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths: ["ci/**", ".github/workflows/packages.yml", "runtime/**", "python/**", "install.sh"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: HailoRT ${{ matrix.hailort }} ${{ matrix.machine }}
+    runs-on: ${{ matrix.machine == 'aarch64' && 'ubuntu-24.04-arm' || 'ubuntu-24.04' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # Hailo-8 / 8L: HailoRT 4.x (Raspberry Pi OS hailo-all); Hailo-10H / 15: HailoRT 5.x (hailo-h10-all)
+        hailort: ["4.23.0", "4.24.0", "5.1.1", "5.2.0", "5.3.0", "5.4.0", "5.5.0"]
+        machine: [aarch64, x86_64]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: libhailort (cached)
+        uses: actions/cache@v4
+        with:
+          path: .cache/libhailort-${{ matrix.hailort }}-${{ matrix.machine }}
+          key: manylinux-libhailort-${{ matrix.hailort }}-${{ matrix.machine }}-v1
+
+      - name: Build (manylinux_2_28)
+        run: |
+          docker run --rm -v "$PWD:/io" quay.io/pypa/manylinux_2_28_${{ matrix.machine }} \
+            bash /io/ci/build_wheel.sh ${{ matrix.hailort }}
+          sudo chown -R "$(id -u)" .cache dist
+
+      - name: Test on Debian Bookworm (Python 3.11, glibc 2.36, like Raspberry Pi OS Bookworm)
+        run: |
+          docker run --rm -v "$PWD:/io" -e LD_LIBRARY_PATH=/io/.cache/libhailort-${{ matrix.hailort }}-${{ matrix.machine }}/lib \
+            python:3.11-slim-bookworm bash -c '
+              set -e
+              wheel=$(ls /io/dist/hailort-*.whl); cp "$wheel" "/tmp/${wheel##*/hailort-${{ matrix.hailort }}_}"
+              pip install --quiet /tmp/opennve_hailo-*.whl pytest
+              python -c "import opennve_hailo as h; assert h.hailort_version() == \"${{ matrix.hailort }}\"; print(h.info())"
+              cd /tmp && python -m pytest -q /io/python/tests'
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      - name: Test with Python 3.14
+        run: |
+          export LD_LIBRARY_PATH=$PWD/.cache/libhailort-${{ matrix.hailort }}-${{ matrix.machine }}/lib
+          wheel=$(ls dist/hailort-*.whl); cp "$wheel" "/tmp/${wheel##*/hailort-${{ matrix.hailort }}_}"
+          python -m pip install --quiet /tmp/opennve_hailo-*.whl pytest
+          (cd /tmp && python -m pytest -q $GITHUB_WORKSPACE/python/tests)
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: package-${{ matrix.hailort }}-${{ matrix.machine }}
+          path: dist/*.whl
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "openNVE-hailo $GITHUB_REF_NAME" \
+            --notes "Ready-made opennve_hailo packages for HailoRT 4.x (Hailo-8 / 8L) and 5.x (Hailo-10H / 15), Linux aarch64 / x86_64, Python 3.11+. Install with install.sh (or opennve hailo install): it picks the package of the installed HailoRT version."
+          gh release upload "$GITHUB_REF_NAME" dist/*.whl install.sh --clobber
