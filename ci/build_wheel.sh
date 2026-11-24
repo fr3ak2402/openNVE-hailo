@@ -14,7 +14,12 @@ PYTHON=/opt/python/cp311-cp311/bin/python
 
 if [[ ! -f "$LIB/lib/libhailort.so.$VERSION" ]]; then
     echo "building libhailort $VERSION (only to link against)"
-    export CC="$(command -v gcc)" CXX="$(command -v g++)"  # also for the external projects (protobuf)
+    # HailoRT configures protobuf in a clean environment (PATH=/usr/bin...): make the compilers of
+    # the manylinux gcc-toolset visible there
+    for tool in gcc g++ cc c++; do
+        [[ -e "/usr/local/bin/$tool" ]] || ln -s "$(command -v "$tool" || command -v gcc)" "/usr/local/bin/$tool"
+    done
+    export CC=/usr/local/bin/gcc CXX=/usr/local/bin/g++
     rm -rf /tmp/hailort /tmp/hailort-build
     git clone --quiet --depth 1 --branch "v$VERSION" https://github.com/hailo-ai/hailort.git /tmp/hailort
     cmake -S /tmp/hailort -B /tmp/hailort-build -DCMAKE_BUILD_TYPE=Release \
