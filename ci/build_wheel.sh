@@ -22,6 +22,9 @@ if [[ ! -f "$LIB/lib/libhailort.so.$VERSION" ]]; then
     export CC=/usr/local/bin/gcc CXX=/usr/local/bin/g++
     rm -rf /tmp/hailort /tmp/hailort-build
     git clone --quiet --depth 1 --branch "v$VERSION" https://github.com/hailo-ai/hailort.git /tmp/hailort
+    # AlmaLinux installs protobuf into lib64, HailoRT looks in lib
+    mkdir -p /tmp/hailort/hailort/external/protobuf-install
+    ln -s lib64 /tmp/hailort/hailort/external/protobuf-install/lib
     cmake -S /tmp/hailort -B /tmp/hailort-build -DCMAKE_BUILD_TYPE=Release \
         -DCMAKE_C_COMPILER="$CC" -DCMAKE_CXX_COMPILER="$CXX"
     cmake --build /tmp/hailort-build --target libhailort -j "$(nproc)"
