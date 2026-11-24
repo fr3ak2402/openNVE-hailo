@@ -40,6 +40,7 @@ jobs:
           docker run --rm -v "$PWD:/io" -e LD_LIBRARY_PATH=/io/.cache/libhailort-${{ matrix.hailort }}-${{ matrix.machine }}/lib \
             python:3.11-slim-bookworm bash -c '
               set -e
+              apt-get update -qq && apt-get install -y -qq libatomic1 >/dev/null  # needed by the test libhailort
               wheel=$(ls /io/dist/hailort-*.whl); cp "$wheel" "/tmp/${wheel##*/hailort-${{ matrix.hailort }}_}"
               pip install --quiet /tmp/opennve_hailo-*.whl pytest
               python -c "import opennve_hailo as h; assert h.hailort_version() == \"${{ matrix.hailort }}\"; print(h.info())"
