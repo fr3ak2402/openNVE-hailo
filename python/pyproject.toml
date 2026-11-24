@@ -30,3 +30,7 @@ features = ["pyo3/extension-module"]
 # libhailort is not copied into the wheel: the package uses the HailoRT installed with the driver
 auditwheel = "skip"
 compatibility = "linux"
+
+# openNVE finds the plugin through this entry point (opennve plugin list)
+[project.entry-points."opennve.plugins"]
+hailo = "opennve_hailo.opennve_plugin:plugin"

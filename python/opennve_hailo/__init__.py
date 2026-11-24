@@ -12,6 +12,8 @@ AI HAT+ 2; Hailo-15). Inputs and outputs are float32 numpy arrays, channels last
     outputs = model.run(np.zeros((16, 80, 80, 2), np.float32))   # [array (16, 80, 80, 3)]
 
 All models of a program share one Hailo device; HailoRT's scheduler switches between them.
+
+It is also the openNVE plugin "hailo" (opennve_hailo.opennve_plugin): agents with .hef models.
 """
 
 from __future__ import annotations
