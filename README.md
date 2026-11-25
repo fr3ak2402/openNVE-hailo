@@ -1,6 +1,6 @@
 # openNVE-hailo
 
-Hailo accelerators for [openNVE](https://github.com/fr3ak2402/openNVE): runs compiled Hailo models
+The openNVE plugin `hailo`: Hailo accelerators for [openNVE](https://github.com/fr3ak2402/openNVE). Runs compiled Hailo models
 (`.hef`) with HailoRT through a Rust library and a Python module, the same way
 [neuromorphic-drivers](https://github.com/fr3ak2402/neuromorphic-drivers) brings the event cameras
 to openNVE.
@@ -20,7 +20,7 @@ Windows (x86_64, with the HailoRT Windows installer; not tested). Hailo has no d
 | Directory | What |
 |---|---|
 | `runtime/` | Rust crate `hailo-runtime`: C++ bridge ([cxx](https://cxx.rs)) to the asynchronous InferModel API of libhailort 4.x / 5.x, safe Rust API (`scan`, `Model::load`, `Model::run`) |
-| `python/` | Python package `opennve_hailo` (PyO3, one wheel for Python 3.11 and newer): `scan()`, `Model(path).run(batch)` with numpy arrays |
+| `python/` | Python package `opennve_hailo` (PyO3, one wheel for Python 3.11 and newer): `scan()`, `Model(path).run(batch)` with numpy arrays, and the openNVE plugin (`opennve_hailo/opennve_plugin.py`) |
 | `install.sh` | Sets up the Raspberry Pi (PCIe, driver, HailoRT) and installs the Python package (ready-made, or built here) |
 | `ci/build_wheel.sh` | Builds the ready-made package for one HailoRT version (manylinux_2_28 container, CI) |
 
@@ -34,9 +34,12 @@ One command sets up everything on the Raspberry Pi, with the openNVE environment
 
 ```sh
 source ~/opennve/.venv/bin/activate      # the Python environment of openNVE
-opennve hailo install                    # openNVE 1.2.0 or newer; or: bash openNVE-hailo/install.sh
+opennve plugin install hailo             # openNVE 1.2.0 or newer; or: bash openNVE-hailo/install.sh
 sudo reboot                              # if it says so
+opennve plugin list                      # hailo  0.1.0  Hailo accelerators ...
 ```
+
+Options of `install.sh` come after `--`: `opennve plugin install hailo -- --yes --reboot`.
 
 `install.sh` does only what is missing, and asks before changing the system (`--yes`: does not
 ask):
@@ -66,7 +69,8 @@ from the Hailo Developer Zone first; `install.sh` then builds and installs openn
 (`--no-system` skips steps 2 to 4). Check:
 
 ```sh
-opennve system      # HailoRT 4.23.0  1 Hailo device (Hailo-8L) (.hef models)
+opennve hailo       # module, driver, HailoRT, devices
+opennve system      # HailoRT 4.23.0  1 Hailo device (Hailo-8L) (.hef models, plugin hailo 0.1.0)
 python -c "import opennve_hailo as h; print(h.hailort_version(), h.scan())"
 ```
 
@@ -87,7 +91,16 @@ print(outputs[0].shape)        # (16, 80, 80, 3)
   `run` releases the GIL, several threads (one model each) keep the Hailo busy.
 - HailoRT's `hailort.log` is not written (set `HAILORT_LOGGER_PATH` to get it).
 
-In openNVE, agents with a `.hef` model use this package (backend `hailo`).
+## openNVE plugin
+
+`opennve_hailo` registers itself as the openNVE plugin `hailo` (entry point `opennve.plugins` in
+`python/pyproject.toml`, code in `opennve_hailo/opennve_plugin.py`); it imports openNVE only when
+openNVE loads it, so `opennve_hailo` also works on its own. The plugin adds:
+
+- the backend `hailo`: agents with a `.hef` model run on the Hailo (`"backend": "auto"`), one
+  model per workflow thread, 2 threads (HailoRT schedules them on the device)
+- the command `opennve hailo`: module on PCIe, driver, HailoRT, devices
+- the Hailo line of `opennve system`
 
 ## Rust
 
